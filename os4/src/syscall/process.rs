@@ -52,11 +52,11 @@ pub fn sys_set_priority(_prio: isize) -> isize {
 
 // YOUR JOB: 扩展内核以实现 sys_mmap 和 sys_munmap
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    KERNEL_SPACE.lock().mmap(_start,_len,_port)  //mmap(_start,_len,_port)   
+    //KERNEL_SPACE.lock().mmap(_start,_len,_port)  //mmap(_start,_len,_port)   
 }
 
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
-    KERNEL_SPACE.lock().munmap(_start,_len)
+    //KERNEL_SPACE.lock().munmap(_start,_len)
 }
 
 // YOUR JOB: 引入虚地址后重写 sys_task_info
