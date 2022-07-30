@@ -24,6 +24,8 @@ pub use task::{TaskControlBlock, TaskStatus};
 
 pub use context::TaskContext;
 
+use alloc::vec::Vec;
+
 /// The task manager, where all the tasks are managed.
 ///
 /// Functions implemented on `TaskManager` deals with all task state transitions
@@ -43,7 +45,7 @@ pub struct TaskManager {
 /// The task manager inner in 'UPSafeCell'
 struct TaskManagerInner {
     /// task list
-    tasks: [TaskControlBlock; MAX_APP_NUM],
+    tasks: Vec<TaskControlBlock>,//[TaskControlBlock; MAX_APP_NUM],
     /// id of current `Running` task
     current_task: usize,
 }
@@ -51,7 +53,10 @@ struct TaskManagerInner {
 lazy_static! {
     /// a `TaskManager` instance through lazy_static!
     pub static ref TASK_MANAGER: TaskManager = {
+        info!("init TASK_MANAGER");
         let num_app = get_num_app();
+        info!("num_app = {}",num_app);
+        /*
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
@@ -61,7 +66,12 @@ lazy_static! {
         for (i, t) in tasks.iter_mut().enumerate().take(num_app) {
             t.task_cx = TaskContext::goto_restore(init_app_cx(i));
             t.task_status = TaskStatus::Ready;
+        }*/
+        let mut tasks : Vec<TaskControlBlock> = Vec::new();
+        for i in 0..num_app{
+            tasks.push(TaskControlBlock::new(get_app_data(i),i));
         }
+
         TaskManager {
             num_app,
             inner: unsafe {
