@@ -1,42 +1,34 @@
 //! Types related to task management
-
 use super::TaskContext;
-use crate::config::{MAX_SYSCALL_NUM};
+use crate::config::{kernel_stack_position, TRAP_CONTEXT,MAX_SYSCALL_NUM};
+use crate::mm::{MapPermission, MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
+use crate::trap::{trap_handler, TrapContext};
 
-//LAB2:
-use crate::config::{kernel_stack_position,TRAP_CONTEXT};
-use crate::mm::{MapPermission,MemorySet,PhysPageNum,VirtAddr,KERNEL_SPACE};
-use crate::trap::{trap_handler,TrapContext};
-
-#[derive(Copy, Clone)]
 /// task control block structure
 pub struct TaskControlBlock {
     pub task_status: TaskStatus,
     pub task_cx: TaskContext,
-    // LAB1: Add whatever you need about the Task.
-    pub syscall_times:[u32;MAX_SYSCALL_NUM],
-    pub start_time:usize,
-
-    //LAB2:
     pub memory_set: MemorySet,
     pub trap_cx_ppn: PhysPageNum,
     pub base_size: usize,
+    pub syscall_times:[u32;MAX_SYSCALL_NUM],
+    pub start_time:usize,
 }
 
-//LAB2:
-impl TaskControlBlock{
-    pub fn get_trap_cx(&self) -> &'static mut TrapContext{
+impl TaskControlBlock {
+    pub fn get_trap_cx(&self) -> &'static mut TrapContext {
         self.trap_cx_ppn.get_mut()
     }
-
-    pub fn get_user_token(&self) -> usize{
+    pub fn get_user_token(&self) -> usize {
         self.memory_set.token()
     }
-
-    pub fn new(elf_data: &[u8],app_id: usize) -> Self{
-        let (memory_set,user_sp,entry_point) = MemorySet::from_elf(elf_data);
-        let trap_cx_ppn = memory_set.translate(VirtAddr::from(TRAP_CONTEXT).into())
-        .unwrap().ppn();
+    pub fn new(elf_data: &[u8], app_id: usize) -> Self {
+        // memory_set with elf program headers/trampoline/trap context/user stack
+        let (memory_set, user_sp, entry_point) = MemorySet::from_elf(elf_data);
+        let trap_cx_ppn = memory_set
+            .translate(VirtAddr::from(TRAP_CONTEXT).into())
+            .unwrap()
+            .ppn();
         let task_status = TaskStatus::Ready;
         // map a kernel-stack in kernel space
         let (kernel_stack_bottom, kernel_stack_top) = kernel_stack_position(app_id);
@@ -51,6 +43,8 @@ impl TaskControlBlock{
             memory_set,
             trap_cx_ppn,
             base_size: user_sp,
+            syscall_times:[0;MAX_SYSCALL_NUM],
+            start_time:0,
         };
         // prepare TrapContext in user space
         let trap_cx = task_control_block.get_trap_cx();
@@ -64,7 +58,6 @@ impl TaskControlBlock{
         task_control_block
     }
 }
-
 
 #[derive(Copy, Clone, PartialEq)]
 /// task status: UnInit, Ready, Running, Exited

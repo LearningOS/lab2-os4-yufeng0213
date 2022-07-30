@@ -14,17 +14,15 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
-use crate::config::{MAX_APP_NUM, MAX_SYSCALL_NUM};
-use crate::loader::{get_num_app, init_app_cx};
-use crate::timer::{get_time_us};
+use crate::loader::{get_app_data, get_num_app};
 use crate::sync::UPSafeCell;
+use crate::trap::TrapContext;
+use alloc::vec::Vec;
 use lazy_static::*;
 pub use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
 
 pub use context::TaskContext;
-
-use alloc::vec::Vec;
 
 /// The task manager, where all the tasks are managed.
 ///
@@ -45,7 +43,7 @@ pub struct TaskManager {
 /// The task manager inner in 'UPSafeCell'
 struct TaskManagerInner {
     /// task list
-    tasks: Vec<TaskControlBlock>,//[TaskControlBlock; MAX_APP_NUM],
+    tasks: Vec<TaskControlBlock>,
     /// id of current `Running` task
     current_task: usize,
 }
@@ -55,23 +53,11 @@ lazy_static! {
     pub static ref TASK_MANAGER: TaskManager = {
         info!("init TASK_MANAGER");
         let num_app = get_num_app();
-        info!("num_app = {}",num_app);
-        /*
-        let mut tasks = [TaskControlBlock {
-            task_cx: TaskContext::zero_init(),
-            task_status: TaskStatus::UnInit,
-            start_time:0,
-            syscall_times:[0;MAX_SYSCALL_NUM],
-        }; MAX_APP_NUM];
-        for (i, t) in tasks.iter_mut().enumerate().take(num_app) {
-            t.task_cx = TaskContext::goto_restore(init_app_cx(i));
-            t.task_status = TaskStatus::Ready;
-        }*/
-        let mut tasks : Vec<TaskControlBlock> = Vec::new();
-        for i in 0..num_app{
-            tasks.push(TaskControlBlock::new(get_app_data(i),i));
+        info!("num_app = {}", num_app);
+        let mut tasks: Vec<TaskControlBlock> = Vec::new();
+        for i in 0..num_app {
+            tasks.push(TaskControlBlock::new(get_app_data(i), i));
         }
-
         TaskManager {
             num_app,
             inner: unsafe {
@@ -88,17 +74,17 @@ impl TaskManager {
     /// Run the first task in task list.
     ///
     /// Generally, the first task in task list is an idle task (we call it zero process later).
-    /// But in ch3, we load apps statically, so the first task is a real app.
+    /// But in ch4, we load apps statically, so the first task is a real app.
     fn run_first_task(&self) -> ! {
         let mut inner = self.inner.exclusive_access();
-        let task0 = &mut inner.tasks[0];
-        task0.task_status = TaskStatus::Running;
-        let next_task_cx_ptr = &task0.task_cx as *const TaskContext;
+        let next_task = &mut inner.tasks[0];
+        next_task.task_status = TaskStatus::Running;
+        let next_task_cx_ptr = &next_task.task_cx as *const TaskContext;
         drop(inner);
         let mut _unused = TaskContext::zero_init();
         // before this, we should drop local variables that must be dropped manually
         unsafe {
-            __switch(&mut _unused as *mut TaskContext, next_task_cx_ptr);
+            __switch(&mut _unused as *mut _, next_task_cx_ptr);
         }
         panic!("unreachable in run_first_task!");
     }
@@ -128,6 +114,19 @@ impl TaskManager {
             .find(|id| inner.tasks[*id].task_status == TaskStatus::Ready)
     }
 
+    /// Get the current 'Running' task's token.
+    fn get_current_token(&self) -> usize {
+        let inner = self.inner.exclusive_access();
+        inner.tasks[inner.current_task].get_user_token()
+    }
+
+    #[allow(clippy::mut_from_ref)]
+    /// Get the current 'Running' task's trap contexts.
+    fn get_current_trap_cx(&self) -> &mut TrapContext {
+        let inner = self.inner.exclusive_access();
+        inner.tasks[inner.current_task].get_trap_cx()
+    }
+
     /// Switch current `Running` task to the task we have found,
     /// or there is no `Ready` task and we can exit with all applications completed
     fn run_next_task(&self) {
@@ -135,11 +134,6 @@ impl TaskManager {
             let mut inner = self.inner.exclusive_access();
             let current = inner.current_task;
             inner.tasks[next].task_status = TaskStatus::Running;
-
-            if inner.tasks[next].start_time == 0{
-                inner.tasks[next].start_time = get_time_us();
-            }
-
             inner.current_task = next;
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
@@ -154,30 +148,31 @@ impl TaskManager {
         }
     }
 
-    // LAB1: Try to implement your function to update or get task info!
-    fn get_current_TaskCurrentBlock_start_time(&self) -> usize{
-        let inner = self.inner.exclusive_access();
-        let current = inner.current_task;
-        inner.tasks[current].start_time
-    }
-
-    fn get_current_status(&self) -> TaskStatus{
-        let inner = self.inner.exclusive_access();
-        let current = inner.current_task;
-        inner.tasks[current].task_status
-    }
-
-    fn add_syscall_times(&self,syscall_id:usize){
-        let mut inner = self.inner.exclusive_access();
-        let current = inner.current_task;
-        inner.tasks[current].syscall_times[syscall_id] += 1;
-    }
-
-    fn get_syscall_times(&self) -> [u32;500]{
-        let inner = self.inner.exclusive_access();
-        let current = inner.current_task;
-        inner.tasks[current].syscall_times
-    }
+    //LAB1
+        // LAB1: Try to implement your function to update or get task info!
+        fn get_current_TaskCurrentBlock_start_time(&self) -> usize{
+            let inner = self.inner.exclusive_access();
+            let current = inner.current_task;
+            inner.tasks[current].start_time
+        }
+    
+        fn get_current_status(&self) -> TaskStatus{
+            let inner = self.inner.exclusive_access();
+            let current = inner.current_task;
+            inner.tasks[current].task_status
+        }
+    
+        fn add_syscall_times(&self,syscall_id:usize){
+            let mut inner = self.inner.exclusive_access();
+            let current = inner.current_task;
+            inner.tasks[current].syscall_times[syscall_id] += 1;
+        }
+    
+        fn get_syscall_times(&self) -> [u32;500]{
+            let inner = self.inner.exclusive_access();
+            let current = inner.current_task;
+            inner.tasks[current].syscall_times
+        }
 }
 
 /// Run the first task in task list.
@@ -211,6 +206,16 @@ pub fn suspend_current_and_run_next() {
 pub fn exit_current_and_run_next() {
     mark_current_exited();
     run_next_task();
+}
+
+/// Get the current 'Running' task's token.
+pub fn current_user_token() -> usize {
+    TASK_MANAGER.get_current_token()
+}
+
+/// Get the current 'Running' task's trap contexts.
+pub fn current_trap_cx() -> &'static mut TrapContext {
+    TASK_MANAGER.get_current_trap_cx()
 }
 
 // LAB1: Public functions implemented here provide interfaces.
