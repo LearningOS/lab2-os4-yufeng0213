@@ -1,9 +1,9 @@
 //! Process management syscalls
 
 use crate::config::MAX_SYSCALL_NUM;
-use crate::task::{exit_current_and_run_next, suspend_current_and_run_next, TaskStatus};
+use crate::task::{exit_current_and_run_next, suspend_current_and_run_next, TaskStatus,get_current_status,get_syscall_times,get_current_start_time,current_user_token,memory_set_mmap,memory_set_munmap,current_translated_physcial_addressA};
 use crate::timer::get_time_us;
-
+use crate::mm::{KERNEL_SPACE,current_translated_physcial_address};
 #[repr(C)]
 #[derive(Debug)]
 pub struct TimeVal {
@@ -30,15 +30,18 @@ pub fn sys_yield() -> isize {
     0
 }
 
+
 // YOUR JOB: 引入虚地址后重写 sys_get_time
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
+
     let _us = get_time_us();
-    // unsafe {
-    //     *ts = TimeVal {
-    //         sec: us / 1_000_000,
-    //         usec: us % 1_000_000,
-    //     };
-    // }
+    let ts = current_translated_physcial_address(current_user_token(),_ts as *const u8) as *mut TimeVal;
+    unsafe {
+        *ts = TimeVal {
+            sec: _us / 1_000_000,
+            usec: _us % 1_000_000,
+        };
+    }
     0
 }
 
@@ -49,14 +52,29 @@ pub fn sys_set_priority(_prio: isize) -> isize {
 
 // YOUR JOB: 扩展内核以实现 sys_mmap 和 sys_munmap
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    0
+    println!("_start:{}, _len:{},_port:{}",_start,_len,_port);
+    //KERNEL_SPACE.lock().mmap(_start,_len,_port)  //mmap(_start,_len,_port)
+    //get_memory_set().mmap(_start,_len,_port)   
+    memory_set_mmap(_start,_len,_port)
+
 }
 
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
-    0
+    //KERNEL_SPACE.lock().munmap(_start,_len)
+    //get_memory_set().munmap(_start,_len)
+    memory_set_munmap(_start,_len)
 }
 
 // YOUR JOB: 引入虚地址后重写 sys_task_info
 pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
+    let _ti = current_translated_physcial_address(current_user_token(),ti as *const u8) as*mut TaskInfo;
+    unsafe{
+        *_ti = TaskInfo{
+            status: get_current_status(),
+            syscall_times: get_syscall_times(),
+            time: (get_time_us() - get_current_start_time())/1000,
+        }
+    }
+
     0
-}
+} 
