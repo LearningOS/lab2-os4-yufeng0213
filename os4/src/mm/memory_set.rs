@@ -218,6 +218,7 @@ impl MemorySet {
         self.page_table.translate(vpn)
     }
 
+     
     pub fn mmap(&mut self,start:usize,len:usize,port:usize) -> isize{
         let vpnrange = VPNRange::new(VirtAddr::from(start).floor(),VirtAddr::from(start+len).ceil());
         for vpn in vpnrange {
@@ -225,6 +226,8 @@ impl MemorySet {
                 if pte.is_valid(){
                     return -1;
                 }
+            }else{
+                
             }
         }
 
@@ -348,6 +351,8 @@ impl MapArea {
             current_vpn.step();
         }
     }
+
+   
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]

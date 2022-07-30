@@ -11,12 +11,13 @@
 //! It then calls different functionality based on what exactly the exception
 //! was. For example, timer interrupts trigger task preemption, and syscalls go
 //! to [`syscall()`].
-
 mod context;
 
-use crate::config::{TRAMPOLINE,TRAP_CONTEXT};
+use crate::config::{TRAMPOLINE, TRAP_CONTEXT};
 use crate::syscall::syscall;
-use crate::task::{exit_current_and_run_next, suspend_current_and_run_next,current_trap_cx,current_user_token};
+use crate::task::{
+    current_trap_cx, current_user_token, exit_current_and_run_next, suspend_current_and_run_next,
+};
 use crate::timer::set_next_trigger;
 use riscv::register::{
     mtvec::TrapMode,
@@ -26,16 +27,7 @@ use riscv::register::{
 
 core::arch::global_asm!(include_str!("trap.S"));
 
-/// initialize CSR `stvec` as the entry of `__alltraps`
 pub fn init() {
- /*  
-    extern "C" {
-        fn __alltraps();
-    }
-    unsafe {
-        stvec::write(__alltraps as usize, TrapMode::Direct);
-    }
-*/
     set_kernel_trap_entry();
 }
 

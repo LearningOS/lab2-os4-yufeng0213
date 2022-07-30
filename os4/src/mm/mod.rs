@@ -28,10 +28,9 @@ pub fn init() {
     KERNEL_SPACE.lock().activate();
 }
 
-
 pub fn current_translated_physcial_address(token:usize,ptr:*const u8) -> usize{
     let page_table = PageTable::from_token(token);
     let mut va = VirtAddr::from(ptr as usize);
     let ppn = page_table.find_pte(va.floor()).unwrap().ppn();
     PhysAddr::from(ppn).0 + va.page_offset()
-}
+} 

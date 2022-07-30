@@ -21,9 +21,10 @@ use alloc::vec::Vec;
 use lazy_static::*;
 pub use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
-
+use crate::config::{PAGE_SIZE};
 pub use context::TaskContext;
-
+use crate::mm::MemorySet;
+use crate::timer::{get_time_us};
 /// The task manager, where all the tasks are managed.
 ///
 /// Functions implemented on `TaskManager` deals with all task state transitions
@@ -134,6 +135,11 @@ impl TaskManager {
             let mut inner = self.inner.exclusive_access();
             let current = inner.current_task;
             inner.tasks[next].task_status = TaskStatus::Running;
+            
+            if inner.tasks[next].start_time == 0{
+                inner.tasks[next].start_time = get_time_us();
+            }
+
             inner.current_task = next;
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
@@ -148,31 +154,72 @@ impl TaskManager {
         }
     }
 
-    //LAB1
-        // LAB1: Try to implement your function to update or get task info!
-        fn get_current_TaskCurrentBlock_start_time(&self) -> usize{
-            let inner = self.inner.exclusive_access();
-            let current = inner.current_task;
-            inner.tasks[current].start_time
-        }
+    fn get_current_TaskCurrentBlock_start_time(&self) -> usize{
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].start_time
+    }
     
-        fn get_current_status(&self) -> TaskStatus{
-            let inner = self.inner.exclusive_access();
-            let current = inner.current_task;
-            inner.tasks[current].task_status
-        }
+    fn get_current_status(&self) -> TaskStatus{
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].task_status
+    }
     
-        fn add_syscall_times(&self,syscall_id:usize){
-            let mut inner = self.inner.exclusive_access();
-            let current = inner.current_task;
-            inner.tasks[current].syscall_times[syscall_id] += 1;
-        }
+    fn add_syscall_times(&self,syscall_id:usize){
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].syscall_times[syscall_id] += 1;
+    }
     
-        fn get_syscall_times(&self) -> [u32;500]{
-            let inner = self.inner.exclusive_access();
-            let current = inner.current_task;
-            inner.tasks[current].syscall_times
+    fn get_syscall_times(&self) -> [u32;500]{
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].syscall_times
+    }
+/*
+    fn get_memory_set(&self) -> MemorySet{
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].memory_set
+    }
+*/
+    fn memory_set_mmap(&self,_start:usize,_len:usize,_port:usize) -> isize{
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+
+        if _start % PAGE_SIZE != 0 || _port & !0x7 != 0 || _port & 0x7 == 0 {
+            return -1;
         }
+
+        inner.tasks[current].memory_set.mmap(_start,_len,_port)
+    }
+
+    fn memory_set_munmap(&self,_start:usize,_len:usize) -> isize{
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        if _start % PAGE_SIZE != 0 {
+            return -1;
+        }
+        inner.tasks[current].memory_set.munmap(_start,_len)
+    }
+
+    fn current_translated_physcial_addressA(&self,ptr:*const u8) -> usize{
+/*
+        let page_table = PageTable::from_token(token);
+        let mut va = VirtAddr::from(ptr as usize);
+        let ppn = page_table.find_pte(va.floor()).unwrap().ppn();
+        PhysAddr::from(ppn).0 + va.page_offset()
+*/
+/*
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let mut va = VirtAddr::from(ptr as usize);
+        let ppn = inner.tasks[current].memory_set.page_table.find_pte(va.floor()).unwrap().ppn();
+        PhysAddr::from(ppn).0 + va.page_offset()
+*/
+        0
+    } 
 }
 
 /// Run the first task in task list.
@@ -218,8 +265,7 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
     TASK_MANAGER.get_current_trap_cx()
 }
 
-// LAB1: Public functions implemented here provide interfaces.
-// You may use TASK_MANAGER member functions to handle requests.
+
 pub fn get_current_start_time() -> usize{
     TASK_MANAGER.get_current_TaskCurrentBlock_start_time()
 }
@@ -235,3 +281,20 @@ pub fn add_syscall_times(syscall_id:usize){
 pub fn get_syscall_times() -> [u32;500]{
     TASK_MANAGER.get_syscall_times()
 } 
+
+/*
+pub fn get_memory_set() -> MemorySet{
+    TASK_MANAGER.get_memory_set()
+}*/
+
+pub fn memory_set_mmap(_start:usize,_len:usize,_port:usize) -> isize{
+    TASK_MANAGER.memory_set_mmap(_start,_len,_port)
+}
+
+pub fn memory_set_munmap(_start:usize,_len:usize) -> isize{
+    TASK_MANAGER.memory_set_munmap(_start,_len)
+}
+
+pub fn current_translated_physcial_addressA(ptr:*const u8) -> usize{
+    TASK_MANAGER.current_translated_physcial_addressA(ptr)
+}
